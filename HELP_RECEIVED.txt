@@ -1,0 +1,20 @@
+HELP RECEIVED
+
+OpenAI ChatGPT (Codex) was used to review the project assignment and supplied
+Sprint 1 code; design and implement Sprint 2's Node and TransitionModel;
+and prepare the Sprint 3 update. Sprint 3 assistance included separating
+search strategies into explicit classes, implementing structured search
+results and metrics, integrating the earlier engine and infrastructure,
+redesigning the Tkinter front end, writing and running automated tests and
+console demonstrations, and preparing documentation and sample outputs.
+
+The existing search choices and seeded map generator were already present
+in the Sprint 1 baseline. The original Sprint 1 and Sprint 2 tests are
+retained in this package. The Sprint 3 work refactors and extends those
+solutions with dedicated strategy classes, cutoff and resource-limit
+reporting, a new front end, and additional correctness checks. Codex
+subagents assisted with algorithm tests/review and front-end development
+and validation.
+
+This statement records the AI assistance included in this package. The
+submitting team should add any additional help received before submission.
