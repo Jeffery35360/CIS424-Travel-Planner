@@ -1,0 +1,22 @@
+Single-Agent Travel Planner: grid demonstration
+Start=Location(x=1, y=1), destination=Location(x=10, y=8)
+Algorithm=Breadth First Search, DLS limit=20
+Step  1: position=Location(x=1, y=2) | Traveler moved.
+Step  2: position=Location(x=1, y=3) | Traveler moved.
+Step  3: position=Location(x=1, y=4) | Traveler moved.
+Step  4: position=Location(x=1, y=5) | Traveler moved.
+Step  5: position=Location(x=2, y=5) | Traveler moved.
+Step  6: position=Location(x=3, y=5) | Traveler moved.
+Step  7: position=Location(x=4, y=5) | Traveler moved.
+Step  8: position=Location(x=4, y=6) | Traveler moved.
+Step  9: position=Location(x=4, y=7) | Traveler moved.
+Step 10: position=Location(x=4, y=8) | Traveler moved.
+Step 11: position=Location(x=4, y=9) | Traveler moved.
+Step 12: position=Location(x=5, y=9) | Traveler moved.
+Step 13: position=Location(x=6, y=9) | Traveler moved.
+Step 14: position=Location(x=7, y=9) | Traveler moved.
+Step 15: position=Location(x=8, y=9) | Traveler moved.
+Step 16: position=Location(x=8, y=8) | Traveler moved.
+Step 17: position=Location(x=9, y=8) | Traveler moved.
+Step 18: position=Location(x=10, y=8) | Destination reached!
+Search status=Success, expanded=98, path cost=18

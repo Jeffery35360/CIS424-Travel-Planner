@@ -1,0 +1,30 @@
+Sprint 2: Node and TransitionModel demonstration
+Grid: 4 x 3 | start=(0, 0) | goal=(3, 0) | obstacle=(1, 0)
+Root: state=Location(x=0, y=0), parent=None, action=None, depth=0, cost=0
+
+Predict each action at the top-left corner:
+  UP: not applicable (boundary or obstacle)
+  DOWN: Location(x=0, y=1)
+  LEFT: not applicable (boundary or obstacle)
+  RIGHT: not applicable (boundary or obstacle)
+
+Expand root (legal successor nodes only):
+  action=DOWN, state=Location(x=0, y=1), parent=Location(x=0, y=0), depth=1, cost=1
+Live environment unchanged: position=Location(x=0, y=0), steps=0
+
+Actions at hypothetical state Location(x=2, y=1): UP, DOWN, LEFT, RIGHT
+Trapped start successor count: 0
+
+Existing planner now uses Node objects and TransitionModel.expand:
+  Algorithm: Breadth First Search
+  Actions: DOWN -> RIGHT -> RIGHT -> UP -> RIGHT
+  States: (0, 0) -> (0, 1) -> (1, 1) -> (2, 1) -> (2, 0) -> (3, 0)
+  Goal node depth=5, path cost=5
+  Future positions returned by plan: 5
+Execute the reconstructed actions through the Sprint 1 environment:
+  Step 1: DOWN -> Location(x=0, y=1) | Traveler moved.
+  Step 2: RIGHT -> Location(x=1, y=1) | Traveler moved.
+  Step 3: RIGHT -> Location(x=2, y=1) | Traveler moved.
+  Step 4: UP -> Location(x=2, y=0) | Traveler moved.
+  Step 5: RIGHT -> Location(x=3, y=0) | Destination reached!
+Terminal goal successor count: 0

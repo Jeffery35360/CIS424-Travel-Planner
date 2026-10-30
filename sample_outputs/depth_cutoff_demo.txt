@@ -1,0 +1,5 @@
+Single-Agent Travel Planner: grid demonstration
+Start=Location(x=1, y=1), destination=Location(x=10, y=8)
+Algorithm=Depth Limited Search, DLS limit=0
+Step  0: position=Location(x=1, y=1) | Depth limit 0 reached; increase the limit.
+Search status=Depth cutoff, expanded=0, path cost=None

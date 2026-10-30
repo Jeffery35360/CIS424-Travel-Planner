@@ -1,0 +1,35 @@
+Sprint 3: four required search algorithms
+Same original 12 x 10 map, start=Location(x=1, y=1), goal=Location(x=10, y=8)
+DLS depth limit=20; all moves cost 1; search does not move the agent.
+Expanded = actual successor expansions; generated includes the root and pruned children.
+
+Depth First Search: Success
+  moves=44, cost=44, examined=65, expanded=64, generated=204, peak frontier=38
+  active search=0.869 ms; thread CPU=0.874 ms
+  actions: DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> RIGHT -> UP -> UP -> UP -> UP -> UP -> RIGHT -> RIGHT -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> UP -> UP -> UP -> UP -> UP -> UP -> UP -> UP -> UP -> RIGHT -> RIGHT -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN
+  replay: goal reached=True, steps=44
+
+Breadth First Search: Success
+  moves=18, cost=18, examined=99, expanded=98, generated=320, peak frontier=10
+  active search=1.043 ms; thread CPU=1.049 ms
+  actions: DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> RIGHT -> DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> RIGHT -> RIGHT -> UP -> RIGHT -> RIGHT
+  replay: goal reached=True, steps=18
+
+Depth Limited Search: Success
+  moves=20, cost=20, examined=58207, expanded=28373, generated=95810, peak frontier=23
+  active search=459.148 ms; thread CPU=462.038 ms
+  actions: UP -> RIGHT -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> RIGHT -> RIGHT -> UP -> RIGHT -> RIGHT
+  replay: goal reached=True, steps=20
+
+Uniform Cost Search: Success
+  moves=18, cost=18, examined=99, expanded=98, generated=320, peak frontier=10
+  active search=1.518 ms; thread CPU=1.525 ms
+  actions: DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> RIGHT -> DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> RIGHT -> RIGHT -> UP -> RIGHT -> RIGHT
+  replay: goal reached=True, steps=18
+
+Depth-limit edge cases (5-cell corridor):
+  limit=0: Depth cutoff; expanded=0; cost=None
+  limit=3: Depth cutoff; expanded=3; cost=None
+  limit=4: Success; expanded=4; cost=4
+Trapped start: No route (exhausted search, not a depth cutoff).
+Original live world unchanged: position=Location(x=1, y=1), steps=0
