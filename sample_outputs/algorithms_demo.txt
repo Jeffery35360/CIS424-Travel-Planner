@@ -5,25 +5,25 @@ Expanded = actual successor expansions; generated includes the root and pruned c
 
 Depth First Search: Success
   moves=44, cost=44, examined=65, expanded=64, generated=204, peak frontier=38
-  active search=0.869 ms; thread CPU=0.874 ms
+  active search=0.885 ms; thread CPU=0.891 ms
   actions: DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> RIGHT -> UP -> UP -> UP -> UP -> UP -> RIGHT -> RIGHT -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> UP -> UP -> UP -> UP -> UP -> UP -> UP -> UP -> UP -> RIGHT -> RIGHT -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN
   replay: goal reached=True, steps=44
 
 Breadth First Search: Success
   moves=18, cost=18, examined=99, expanded=98, generated=320, peak frontier=10
-  active search=1.043 ms; thread CPU=1.049 ms
+  active search=1.300 ms; thread CPU=1.308 ms
   actions: DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> RIGHT -> DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> RIGHT -> RIGHT -> UP -> RIGHT -> RIGHT
   replay: goal reached=True, steps=18
 
 Depth Limited Search: Success
   moves=20, cost=20, examined=58207, expanded=28373, generated=95810, peak frontier=23
-  active search=459.148 ms; thread CPU=462.038 ms
+  active search=568.881 ms; thread CPU=569.505 ms
   actions: UP -> RIGHT -> DOWN -> DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> RIGHT -> RIGHT -> UP -> RIGHT -> RIGHT
   replay: goal reached=True, steps=20
 
 Uniform Cost Search: Success
   moves=18, cost=18, examined=99, expanded=98, generated=320, peak frontier=10
-  active search=1.518 ms; thread CPU=1.525 ms
+  active search=1.888 ms; thread CPU=1.956 ms
   actions: DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> RIGHT -> DOWN -> DOWN -> DOWN -> DOWN -> RIGHT -> RIGHT -> RIGHT -> RIGHT -> UP -> RIGHT -> RIGHT
   replay: goal reached=True, steps=18
 

@@ -1,0 +1,22 @@
+Sprint 4: coordinated multiagent travel
+Grid=9x9, agents=3, algorithm=A* Search, horizon=100
+Each agent has its own goal. Waiting is allowed; goals remain occupied after arrival.
+  A1: start=Location(x=0, y=4), goal=Location(x=8, y=4)
+  A2: start=Location(x=4, y=0), goal=Location(x=4, y=8)
+  A3: start=Location(x=8, y=8), goal=Location(x=0, y=8)
+Planning status: Success | Coordinated plan found in priority attempt 1.
+Examined=31, expanded=28, generated=87, active search=0.443 ms
+Schedule makespan=9, sum of arrival costs=25
+  A1: cost=8, waits=0, path=(0,4) -> (1,4) -> (2,4) -> (3,4) -> (4,4) -> (5,4) -> (6,4) -> (7,4) -> (8,4)
+  A2: cost=9, waits=1, path=(4,0) -> (4,1) -> (4,2) -> (4,3) -> (4,3) -> (4,4) -> (4,5) -> (4,6) -> (4,7) -> (4,8)
+  A3: cost=8, waits=0, path=(8,8) -> (7,8) -> (6,8) -> (5,8) -> (4,8) -> (3,8) -> (2,8) -> (1,8) -> (0,8)
+Tick 01: A1=(1,4), A2=(4,1), A3=(7,8) | goals=0/3
+Tick 02: A1=(2,4), A2=(4,2), A3=(6,8) | goals=0/3
+Tick 03: A1=(3,4), A2=(4,3), A3=(5,8) | goals=0/3
+Tick 04: A1=(4,4), A2=(4,3), A3=(4,8) | goals=0/3
+Tick 05: A1=(5,4), A2=(4,4), A3=(3,8) | goals=0/3
+Tick 06: A1=(6,4), A2=(4,5), A3=(2,8) | goals=0/3
+Tick 07: A1=(7,4), A2=(4,6), A3=(1,8) | goals=0/3
+Tick 08: A1=(8,4), A2=(4,7), A3=(0,8) | goals=2/3
+Tick 09: A1=(8,4), A2=(4,8), A3=(0,8) | goals=3/3
+All 3 goals reached with no vertex or head-on edge conflicts.
