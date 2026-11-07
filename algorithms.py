@@ -1,4 +1,4 @@
-"""Sprint 3 search strategies over the shared Sprint 2 transition model.
+"""Sprint 4 uninformed and informed search over the shared transition model.
 
 Each strategy offers search() for a complete result and steps() for incremental
 GUI animation. A generator's return value is the same SearchResult. Neither
@@ -229,20 +229,23 @@ class UniformCostSearch(SearchStrategy):
         tie = count()
         frontier = [(self.priority(root, model.goal), next(tie), root)]
         best_cost = {root.state: 0}
-        closed: set[Location] = set()
+        # Reopening a state with an improved g also makes A* safe when a
+        # subclass supplies an admissible but inconsistent heuristic.
+        expanded_cost: dict[Location, int] = {}
         while frontier:
             _, _, node = heappop(frontier)
-            if node.state in closed or node.path_cost != best_cost.get(node.state):
+            if (node.path_cost != best_cost.get(node.state) or
+                    node.path_cost >= expanded_cost.get(node.state, float('inf'))):
                 continue  # outdated, more expensive frontier entry
             if run.examined >= run.max_nodes:
                 return run.finish(SearchStatus.RESOURCE_LIMIT)
-            closed.add(node.state)
+            expanded_cost[node.state] = node.path_cost
             run.examine(node)
             if model.is_goal(node.state):
                 yield node, False
                 return run.finish(SearchStatus.SUCCESS, node)
             for child in run.expand(model, node):
-                if child.state not in closed and child.path_cost < best_cost.get(child.state, float('inf')):
+                if child.path_cost < best_cost.get(child.state, float('inf')):
                     best_cost[child.state] = child.path_cost
                     heappush(frontier, (self.priority(child, model.goal), next(tie), child))
             run.frontier_peak = max(run.frontier_peak, len(frontier))
@@ -255,15 +258,31 @@ UniformedCostSearch = UniformCostSearch
 
 
 class AStarSearch(UniformCostSearch):
-    """Preserved baseline feature: g + Manhattan distance on the unit grid."""
+    """A* graph search: f(n) = g(n) + h(n), with Manhattan distance h.
+
+    On the standard four-neighbor unit-cost grid h is admissible and
+    consistent, so a returned route is optimal. Lower-g states can reopen.
+    """
+    @staticmethod
+    def heuristic(state: Location, goal: Location) -> int:
+        return abs(state.x - goal.x) + abs(state.y - goal.y)
+
     def priority(self, node: Node, goal: Location) -> int:
-        return node.path_cost + abs(node.state.x - goal.x) + abs(node.state.y - goal.y)
+        return node.path_cost + self.heuristic(node.state, goal)
 
 
 class GreedyBestSearch(UniformCostSearch):
-    """Preserved baseline feature: Manhattan distance only."""
+    """Greedy best-first graph search: f(n) = h(n), ignoring route cost.
+
+    The returned route is legal but need not be shortest. Stable heap ties
+    preserve deterministic Action-order behavior for comparison runs.
+    """
+    @staticmethod
+    def heuristic(state: Location, goal: Location) -> int:
+        return abs(state.x - goal.x) + abs(state.y - goal.y)
+
     def priority(self, node: Node, goal: Location) -> int:
-        return abs(node.state.x - goal.x) + abs(node.state.y - goal.y)
+        return self.heuristic(node.state, goal)
 
 
 def make_search(algorithm: SearchAlgorithm | str, depth_limit: int = 20) -> SearchStrategy:

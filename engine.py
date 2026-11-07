@@ -1,6 +1,6 @@
-"""Sprint 3 travel planner: run python engine.py for the desktop GUI.
+"""Sprint 4 travel planner: run python engine.py for the desktop GUI.
 
-Headless: --demo, --infrastructure-demo, or --algorithms-demo.
+Headless: --informed-demo, --multiagent-demo, --seed-demo, or earlier demos.
 Python 3.10+; only the standard library is required.
 """
 from __future__ import annotations
@@ -190,7 +190,9 @@ def generate_seeded_environment(seed: int, width: int = 12, height: int = 10,
     Uses a dedicated RNG rather than global random state. A randomly carved
     start-to-goal corridor is reserved before placing other obstacles.
     """
-    if width < 2 or height < 2:
+    if (isinstance(width, bool) or not isinstance(width, int) or
+            isinstance(height, bool) or not isinstance(height, int) or
+            width < 2 or height < 2):
         raise ValueError('Seeded maps require dimensions of at least 2 by 2.')
     if not 0 <= obstacle_density <= 1:
         raise ValueError('Obstacle density must be between 0 and 1.')
@@ -229,8 +231,8 @@ def new_engine() -> GameEngine:
 
 
 def console_demo(algorithm: SearchAlgorithm = SearchAlgorithm.BFS,
-                 depth_limit: int = 20) -> None:
-    engine = new_engine()
+                 depth_limit: int = 20, environment: Environment | None = None) -> None:
+    engine = GameEngine(environment) if environment is not None else new_engine()
     engine.agent = TravelAgent(algorithm, depth_limit)
     env = engine.environment
     print('Single-Agent Travel Planner: grid demonstration')
@@ -353,28 +355,152 @@ def launch_gui() -> None:
     open_window()
 
 
+def informed_demo() -> None:
+    """A fixed maze on which greedy search makes a longer route than A*."""
+    obstacles = {Location(1, 2), Location(3, 1), Location(3, 4),
+                 Location(4, 0), Location(4, 2)}
+    env = Environment(5, 5, Location(0, 0), Location(4, 4), obstacles)
+    print('Sprint 4: informed search comparison')
+    print(f'Map=5x5, start={env.start}, goal={env.goal}, all moves cost 1')
+    print('Obstacles=' + str(sorted((p.x, p.y) for p in obstacles)))
+    print('A*: f(n)=g(n)+h(n); Greedy: f(n)=h(n). h is Manhattan distance.')
+    for algorithm in (SearchAlgorithm.BFS, SearchAlgorithm.UCS,
+                      SearchAlgorithm.ASTAR, SearchAlgorithm.GREEDY):
+        result = make_search(algorithm).search(env.transition_model(), env.start)
+        print(f'\n{algorithm.value}: {result.status.value}')
+        print(f'  cost={result.path_cost}, expanded={result.metrics.expanded}, '
+              f'examined={result.metrics.examined}, generated={result.metrics.generated}')
+        print(f'  active search={result.metrics.elapsed_ms:.3f} ms; CPU={result.metrics.cpu_ms:.3f} ms')
+        print('  route=' + ' -> '.join(f'({p.x},{p.y})' for p in [env.start] + result.path))
+        replay = Environment(env.width, env.height, env.start, env.goal, env.obstacles)
+        for action in result.actions:
+            if not replay.execute(action).moved:
+                raise RuntimeError('An informed-search solution contained an invalid move.')
+        if not result.found or replay.agent_location != replay.goal:
+            raise RuntimeError('Expected all informed demonstration routes to reach the goal.')
+        print(f'  executed successfully in {replay.steps} moves')
+    print('\nA* is optimal on this unit grid. Greedy can be longer; fewer expansions alone do not imply a better route.')
+    print(f'Live world unchanged: position={env.agent_location}, steps={env.steps}')
+
+
+def seed_demo(seed: int = 424, width: int = 12, height: int = 10,
+              agent_count: int = 3, obstacle_density: float = 0.25) -> None:
+    from multiagent import generate_multiagent_environment
+    import hashlib
+    import json
+
+    def snapshot(env):
+        return {'width': env.width, 'height': env.height,
+                'agents': [{'id': agent.agent_id, 'start': [agent.start.x, agent.start.y],
+                            'goal': [agent.goal.x, agent.goal.y]} for agent in env.agents],
+                'obstacles': sorted([p.x, p.y] for p in env.obstacles)}
+
+    a = generate_multiagent_environment(seed, width, height, agent_count, obstacle_density)
+    b = generate_multiagent_environment(seed, width, height, agent_count, obstacle_density)
+    world = snapshot(a)
+    print('Sprint 4: reproducible seed generation')
+    print(f'Seed={seed}, width={width}, height={height}, agents={agent_count}, density={obstacle_density}')
+    print(json.dumps(world, indent=2))
+    identical = world == snapshot(b)
+    if not identical:
+        raise RuntimeError('The same seed and parameters must reproduce the same world.')
+    encoded = json.dumps(world, sort_keys=True, separators=(',', ':')).encode()
+    print('Recreated identically:', identical)
+    print('World fingerprint (SHA-256):', hashlib.sha256(encoded).hexdigest())
+    for agent in a.agents:
+        model = TransitionModel(a.width, a.height, agent.goal, frozenset(a.obstacles))
+        route = make_search(SearchAlgorithm.ASTAR).search(model, agent.start)
+        if not route.found:
+            raise RuntimeError('A generated start/goal pair is individually disconnected.')
+        print(f'{agent.agent_id}: independently reachable, shortest distance={route.path_cost}')
+    print('Pairwise reachability does not guarantee a coordinated solution for every bounded priority search.')
+
+
+def multiagent_demo(algorithm: SearchAlgorithm = SearchAlgorithm.ASTAR,
+                    depth_limit: int = 20, horizon: int = 100,
+                    seed: int | None = None, width: int = 12, height: int = 10,
+                    agent_count: int = 3, obstacle_density: float = 0.25) -> None:
+    from multiagent import (CooperativePlanner, generate_multiagent_environment,
+                            new_multiagent_environment)
+    env = (generate_multiagent_environment(seed, width, height, agent_count, obstacle_density)
+           if seed is not None else new_multiagent_environment())
+    print('Sprint 4: coordinated multiagent travel')
+    print(f'Grid={env.width}x{env.height}, agents={len(env.agents)}, '
+          f'algorithm={algorithm.value}, horizon={horizon}')
+    print('Each agent has its own goal. Waiting is allowed; goals remain occupied after arrival.')
+    for agent in env.agents:
+        print(f'  {agent.agent_id}: start={agent.start}, goal={agent.goal}')
+    before = dict(env.positions)
+    plan = CooperativePlanner(algorithm, depth_limit, horizon).plan(env)
+    if env.positions != before or env.steps != 0:
+        raise RuntimeError('Planning must not move the live agents.')
+    print('Planning status:', plan.status.value, '|', plan.message)
+    print(f'Examined={plan.metrics.examined}, expanded={plan.metrics.expanded}, '
+          f'generated={plan.metrics.generated}, active search={plan.metrics.elapsed_ms:.3f} ms')
+    if not plan.found:
+        print('Execution not started: no complete joint schedule was produced within the configured bounds.')
+        return
+    print(f'Schedule makespan={plan.makespan}, sum of arrival costs={plan.total_cost}')
+    for agent_id, path in plan.paths.items():
+        waits = sum(a == b for a, b in zip(path, path[1:]))
+        print(f'  {agent_id}: cost={len(path)-1}, waits={waits}, '
+              'path=' + ' -> '.join(f'({p.x},{p.y})' for p in path))
+    for tick in range(1, plan.makespan + 1):
+        proposals = {agent_id: path[min(tick, len(path) - 1)]
+                     for agent_id, path in plan.paths.items()}
+        result = env.execute_joint(proposals)
+        print(f'Tick {env.steps:02}: ' + ', '.join(f'{name}=({p.x},{p.y})'
+              for name, p in env.positions.items()) + f' | goals={env.goals_found}/{len(env.agents)}')
+    if not env.all_reached:
+        raise RuntimeError('The complete joint schedule did not finish all agents.')
+    print(f'All {env.goals_found} goals reached with no vertex or head-on edge conflicts.')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--demo', action='store_true', help='Execute one route without a display')
     modes.add_argument('--infrastructure-demo', action='store_true', help='Demonstrate Sprint 2 nodes and transitions')
     modes.add_argument('--algorithms-demo', action='store_true', help='Compare all four Sprint 3 algorithms')
+    modes.add_argument('--informed-demo', action='store_true', help='Compare A*, greedy, BFS and UCS on the same maze')
+    modes.add_argument('--multiagent-demo', action='store_true', help='Plan and replay a coordinated joint schedule')
+    modes.add_argument('--seed-demo', action='store_true', help='Show reproducible random agents, goals, and obstacles')
     choices = {'dfs': SearchAlgorithm.DFS, 'bfs': SearchAlgorithm.BFS,
                'dls': SearchAlgorithm.DLS, 'ucs': SearchAlgorithm.UCS,
                'astar': SearchAlgorithm.ASTAR, 'greedy': SearchAlgorithm.GREEDY}
-    parser.add_argument('--algorithm', choices=choices, default='bfs', help='Strategy for --demo (default: bfs)')
+    parser.add_argument('--algorithm', choices=choices, default=None, help='Strategy for travel demos (default: bfs single, astar multi)')
     parser.add_argument('--depth-limit', type=int, default=20, help='DLS limit for headless demos (default: 20)')
+    parser.add_argument('--seed', type=int, help='Generate a map from an integer seed')
+    parser.add_argument('--width', type=int, default=12, help='Seeded grid width (default: 12)')
+    parser.add_argument('--height', type=int, default=10, help='Seeded grid height (default: 10)')
+    parser.add_argument('--agents', type=int, default=3, help='Multiagent count (default: 3)')
+    parser.add_argument('--density', type=float, default=0.25, help='Obstacle probability for eligible cells (default: 0.25)')
+    parser.add_argument('--horizon', type=int, default=100, help='Maximum coordinated arrival time (default: 100)')
     args = parser.parse_args()
     if args.depth_limit < 0:
         parser.error('--depth-limit must be nonnegative')
-    if args.infrastructure_demo:
-        infrastructure_demo()
-    elif args.algorithms_demo:
-        algorithms_demo(args.depth_limit)
-    elif args.demo:
-        console_demo(choices[args.algorithm], args.depth_limit)
-    else:
-        launch_gui()
+    try:
+        if args.infrastructure_demo:
+            infrastructure_demo()
+        elif args.algorithms_demo:
+            algorithms_demo(args.depth_limit)
+        elif args.informed_demo:
+            informed_demo()
+        elif args.seed_demo:
+            seed_demo(args.seed if args.seed is not None else 424, args.width,
+                      args.height, args.agents, args.density)
+        elif args.multiagent_demo:
+            multiagent_demo(choices[args.algorithm or 'astar'], args.depth_limit,
+                            args.horizon, args.seed, args.width, args.height,
+                            args.agents, args.density)
+        elif args.demo:
+            env = (generate_seeded_environment(args.seed, args.width, args.height, args.density)
+                   if args.seed is not None else None)
+            console_demo(choices[args.algorithm or 'bfs'], args.depth_limit, env)
+        else:
+            launch_gui()
+    except ValueError as error:
+        parser.error(str(error))
 
 
 if __name__ == '__main__':

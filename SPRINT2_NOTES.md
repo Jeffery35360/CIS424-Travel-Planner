@@ -1,12 +1,13 @@
 # Sprint 2: Search Infrastructure
 
-> Retained as the Sprint 2 design record. In the Sprint 3 package, value objects,
+> Retained as the Sprint 2 design record. In the Sprint 4 package, value objects,
 > Node, and TransitionModel live in `infrastructure.py`, strategy code lives in
 > `algorithms.py`, and the desktop front end lives in `gui.py`. `engine.py`
 > re-exports the earlier public types. The current README describes the new
 > controls, defaults, metrics, test files, and validation results; earlier
 > statements below about file layout, test counts, and GUI validation describe
-> the Sprint 2 milestone.
+> the Sprint 2 milestone. Sprint 4 adds timed cooperative planning in
+> `multiagent.py`; the current README describes that implementation.
 
 ## What changed
 

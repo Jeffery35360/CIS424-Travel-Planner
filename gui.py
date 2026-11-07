@@ -1,4 +1,4 @@
-"""Sprint 3 desktop front end; all searches advance through Tk's event loop.
+"""Sprint 4 desktop front end; searches and coordination use Tk's event loop.
 
 Rendering never starts a search. Find Route explicitly creates a search
 generator. Step/Auto Run do so when no plan is available, then execute the
@@ -9,11 +9,14 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk, font as tkfont
 from time import perf_counter
+from math import isfinite
 
 from algorithms import SearchStatus, make_search
-from infrastructure import Location, Node
+from infrastructure import Location, Node, TransitionModel
 from engine import (SearchAlgorithm, generate_seeded_environment, new_engine,
                     random_seed)
+from multiagent import (CooperativePlanner, MultiAgentEnvironment,
+                        generate_multiagent_environment, new_multiagent_environment)
 
 
 class TravelPlannerApp:
@@ -27,13 +30,14 @@ class TravelPlannerApp:
         'path': '#8cd8cf', 'obstacle': '#253f50', 'start': '#f7d78a',
         'goal': '#a3d9b5', 'current': '#ecac62', 'successor': '#f3c48c',
     }
+    AGENT_COLORS = ('#137f79', '#a151bc', '#d27a21', '#357cc2', '#bd4c68', '#758629')
     DESCRIPTIONS = {
         SearchAlgorithm.DFS.value: 'Stack / deepest first. Finds a route, but it may be longer than necessary.',
         SearchAlgorithm.BFS.value: 'Queue / shallowest first. Finds a shortest route on this unit-cost grid.',
         SearchAlgorithm.DLS.value: 'Depth-first up to your limit. A cutoff is different from proving no route exists.',
         SearchAlgorithm.UCS.value: 'Priority queue / lowest path cost first. Finds a least-cost route.',
-        SearchAlgorithm.ASTAR.value: 'Priority queue / cost + Manhattan distance. Retained from the earlier project.',
-        SearchAlgorithm.GREEDY.value: 'Priority queue / Manhattan distance. Retained from the earlier project.',
+        SearchAlgorithm.ASTAR.value: 'A*: minimum g + h. Balances traveled cost with Manhattan distance to the goal.',
+        SearchAlgorithm.GREEDY.value: 'Greedy: minimum h only. Heads toward the goal; a shortest route is not guaranteed.',
     }
 
     def __init__(self, root: tk.Tk):
@@ -42,6 +46,10 @@ class TravelPlannerApp:
         self.font_family = 'Segoe UI' if 'segoe ui' in families else 'Arial'
         self.env = new_engine().environment
         self.active_seed = None
+        self.multi_paths = {}
+        self.joint_index = 0
+        self.explored_by_agent = {}
+        self.expanded_by_agent = {}
         self.result = None
         self.route_actions = []
         self.route_positions = []
@@ -58,23 +66,33 @@ class TravelPlannerApp:
         self.grid_geometry = (0.0, 0.0, 1.0)
         self.algorithm_choice = tk.StringVar(value=SearchAlgorithm.BFS.value)
         self.depth_choice = tk.StringVar(value='20')
+        self.multi_mode = tk.BooleanVar(value=False)
+        self.metric_scope = tk.StringVar(value='All agents')
+        self.width_choice = tk.StringVar(value='12')
+        self.height_choice = tk.StringVar(value='10')
+        self.density_choice = tk.StringVar(value='0.25')
+        self.agent_count_choice = tk.StringVar(value='3')
+        self.horizon_choice = tk.StringVar(value='100')
+        self._single_algorithm = SearchAlgorithm.BFS.value
         self.seed_choice = tk.StringVar(value='')
         self.map_label = tk.StringVar(value='Original map / 12 x 10')
         self.description = tk.StringVar(value=self.DESCRIPTIONS[self.algorithm_choice.get()])
         self.status = tk.StringVar(value='Ready to explore')
         self.message = tk.StringVar(value='Choose a strategy, then Find Route. Click an open cell to add an obstacle.')
         self.movement = tk.StringVar(value='0 moves taken  /  0 planned moves remaining')
+        self.legend_text = tk.StringVar(value='A = traveler   S = start   G = destination   Orange = current search node / inspected successor')
         self.metric_vars = {name: tk.StringVar(value='-') for name in
                             ('expanded', 'examined', 'generated', 'frontier', 'elapsed', 'cpu', 'length', 'cost')}
         self._build()
         self.depth_choice.trace_add('write', self._configuration_changed)
+        self.horizon_choice.trace_add('write', self._configuration_changed)
         self.root.protocol('WM_DELETE_WINDOW', self.close)
         self.root.after_idle(self.draw)
 
     def _build(self):
         root = self.root
-        root.title('Travel Planner | Sprint 3 Search Lab')
-        root.geometry('1120x820')
+        root.title('Travel Planner | Sprint 4 Coordination Lab')
+        root.geometry('1120x860')
         root.minsize(1020, 790)
         root.configure(bg=self.BACKGROUND)
         style = ttk.Style(root)
@@ -93,13 +111,19 @@ class TravelPlannerApp:
         style.configure('TEntry', padding=5)
         header = tk.Frame(root, bg=self.INK, padx=24, pady=16)
         header.pack(fill='x')
-        tk.Label(header, text='TRAVEL PLANNER', bg=self.INK, fg='#8fd9d0',
-                 font=(self.font_family, 9, 'bold')).pack(anchor='w')
+        top = tk.Frame(header, bg=self.INK)
+        top.pack(fill='x')
+        tk.Label(top, text='TRAVEL PLANNER', bg=self.INK, fg='#8fd9d0',
+                 font=(self.font_family, 9, 'bold')).pack(side='left')
+        self.mode_checkbox = tk.Checkbutton(top, text='Multiagent mode', variable=self.multi_mode,
+                 command=self.change_mode, bg=self.INK, fg='white', activebackground=self.INK,
+                 activeforeground='white', selectcolor='#31576a', font=(self.font_family, 10, 'bold'))
+        self.mode_checkbox.pack(side='right')
         row = tk.Frame(header, bg=self.INK)
         row.pack(fill='x', pady=(4, 0))
-        tk.Label(row, text='Explore how a search finds its way.', bg=self.INK, fg='white',
+        tk.Label(row, text='Find a route. Coordinate a team.', bg=self.INK, fg='white',
                  font=(self.font_family, 20, 'bold')).pack(side='left')
-        tk.Label(row, text='SPRINT 3  /  SEARCH LAB', bg='#2b485d', fg='#d8e8f1',
+        tk.Label(row, text='SPRINT 4  /  COORDINATION', bg='#2b485d', fg='#d8e8f1',
                  padx=12, pady=7, font=(self.font_family, 9, 'bold')).pack(side='right')
         body = ttk.Frame(root, padding=(20, 18, 20, 10))
         body.pack(fill='both', expand=True)
@@ -125,11 +149,13 @@ class TravelPlannerApp:
                                                ('Goal', self.CELL_COLORS['goal']))):
             tk.Label(legend, bg=color, width=2).grid(row=0, column=index * 2, padx=(0, 5))
             tk.Label(legend, text=name, bg='white', fg=self.MUTED, font=(self.font_family, 9)).grid(row=0, column=index * 2 + 1, padx=(0, 13))
-        ttk.Label(grid_card, text='A = traveler   S = start   G = destination   Orange = current search node / inspected successor',
+        ttk.Label(grid_card, textvariable=self.legend_text,
                   style='Small.TLabel', wraplength=570).grid(row=5, column=0, sticky='w', pady=(8, 0))
 
-        side = ttk.Frame(body)
-        side.grid(row=0, column=1, sticky='nsew')
+        self.sidebar = ttk.Notebook(body)
+        self.sidebar.grid(row=0, column=1, sticky='nsew')
+        side = ttk.Frame(self.sidebar)
+        self.sidebar.add(side, text='Search')
         side.columnconfigure(0, weight=1)
         controls = ttk.Frame(side, style='Card.TFrame', padding=16)
         controls.grid(row=0, column=0, sticky='ew')
@@ -158,13 +184,19 @@ class TravelPlannerApp:
         metrics.grid(row=1, column=0, sticky='ew', pady=(12, 0))
         metrics.columnconfigure((0, 1, 2, 3), weight=1)
         ttk.Label(metrics, text='Search results', style='Title.TLabel').grid(row=0, column=0, columnspan=4, sticky='w', pady=(0, 10))
+        self.scope_menu = ttk.Combobox(metrics, textvariable=self.metric_scope, state='readonly',
+                                      values=['All agents'], width=24)
+        self.scope_menu.grid(row=1, column=0, columnspan=4, sticky='ew', pady=(0, 8))
+        self.scope_menu.bind('<<ComboboxSelected>>', self._scope_changed)
+        self.scope_menu.grid_remove()
         for index, (key, label) in enumerate((('expanded', 'Expanded'), ('examined', 'Examined'),
                                              ('generated', 'Generated'), ('frontier', 'Peak frontier'),
                                              ('elapsed', 'Time (ms)'), ('cpu', 'CPU (ms)'),
                                              ('length', 'Plan moves'), ('cost', 'Plan cost'))):
-            row_index, col = 1 + 2 * (index // 4), index % 4
+            row_index, col = 2 + 2 * (index // 4), index % 4
             ttk.Label(metrics, text=label, style='Small.TLabel').grid(row=row_index, column=col, sticky='w', padx=(0, 7))
             ttk.Label(metrics, textvariable=self.metric_vars[key], font=(self.font_family, 12, 'bold')).grid(row=row_index + 1, column=col, sticky='w', pady=(3, 8))
+        self._build_map_setup()
         map_controls = ttk.Frame(grid_card, style='Card.TFrame')
         map_controls.grid(row=6, column=0, sticky='ew', pady=(14, 0))
         map_controls.columnconfigure(2, weight=1)
@@ -185,6 +217,76 @@ class TravelPlannerApp:
     def _window_resized(self, event):
         if event.widget is self.root:
             self.message_label.configure(wraplength=max(300, event.width - 48))
+
+    def _build_map_setup(self):
+        setup = ttk.Frame(self.sidebar, style='Card.TFrame', padding=16)
+        self.sidebar.add(setup, text='Map setup')
+        setup.columnconfigure(1, weight=1)
+        ttk.Label(setup, text='Seed parameters', style='Title.TLabel').grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 14))
+        for row, (label, variable) in enumerate((('Width (2-40)', self.width_choice),
+                                                ('Height (2-40)', self.height_choice),
+                                                ('Obstacle density (0-1)', self.density_choice),
+                                                ('Agents in team (2-6)', self.agent_count_choice)), 1):
+            ttk.Label(setup, text=label).grid(row=row, column=0, sticky='w', pady=6, padx=(0, 10))
+            ttk.Entry(setup, textvariable=variable, width=9).grid(row=row, column=1, sticky='ew', pady=6)
+        ttk.Label(setup, text='These parameters apply to New Seed and Load Seed. '
+                  'Replay the same seed with the same parameters to restore a map.',
+                  wraplength=290, style='Small.TLabel').grid(row=5, column=0, columnspan=2, sticky='w', pady=(12, 18))
+        ttk.Separator(setup).grid(row=6, column=0, columnspan=2, sticky='ew')
+        ttk.Label(setup, text='Coordination', style='Title.TLabel').grid(row=7, column=0, columnspan=2, sticky='w', pady=(16, 9))
+        ttk.Label(setup, text='Planning horizon (ticks)').grid(row=8, column=0, sticky='w')
+        ttk.Entry(setup, textvariable=self.horizon_choice, width=9).grid(row=8, column=1, sticky='ew')
+        ttk.Label(setup, text='Agents plan in order with reservations for cells and edges. '
+                  'Waiting is allowed. An unsuccessful prioritized plan does not prove '
+                  'the joint problem is impossible.', wraplength=290,
+                  style='Small.TLabel').grid(row=9, column=0, columnspan=2, sticky='w', pady=(12, 18))
+        ttk.Button(setup, text='Generate New Seed', command=self.new_seed_map).grid(row=10, column=0, columnspan=2, sticky='ew')
+
+    def change_mode(self):
+        """Switch between the retained single-agent lab and coordinated teams."""
+        self._invalidate()
+        if self.multi_mode.get():
+            self._single_algorithm = self.algorithm_choice.get()
+            self.algorithm_choice.set(SearchAlgorithm.ASTAR.value)
+            self._replace_environment(new_multiagent_environment())
+        else:
+            self.algorithm_choice.set(self._single_algorithm)
+            self._replace_environment(new_engine().environment)
+        self.description.set(self.DESCRIPTIONS[self.algorithm_choice.get()])
+        self._set_status('Multiagent mode' if self.multi_mode.get() else 'Single-agent mode',
+                         'Plan the team, then Step or Auto Run to move all agents together.'
+                         if self.multi_mode.get() else 'Choose a strategy, then Find Route.')
+
+    def _scope_changed(self, *_args):
+        if self.multi_mode.get() and self.result is not None:
+            self._display_multi_metrics()
+        self.draw()
+
+    def _seed_parameters(self):
+        try:
+            width, height = int(self.width_choice.get()), int(self.height_choice.get())
+            density = float(self.density_choice.get())
+            count = int(self.agent_count_choice.get())
+            if not (2 <= width <= 40 and 2 <= height <= 40):
+                raise ValueError('Width and height must be whole numbers from 2 to 40.')
+            if not isfinite(density) or not 0 <= density <= 1:
+                raise ValueError('Obstacle density must be a finite number from 0 to 1.')
+            if self.multi_mode.get() and not 2 <= count <= 6:
+                raise ValueError('Choose between 2 and 6 agents.')
+            return width, height, density, count
+        except ValueError as error:
+            self._set_status('Check the map parameters', str(error), '#a65c17')
+            return None
+
+    def _planning_horizon(self):
+        try:
+            horizon = int(self.horizon_choice.get())
+            if not 1 <= horizon <= 1000:
+                raise ValueError
+            return horizon
+        except ValueError:
+            self._set_status('Check the planning horizon', 'Enter a whole number from 1 to 1000 ticks.', '#a65c17')
+            return None
 
     def _set_status(self, status, message, color=None):
         self.status.set(status)
@@ -213,6 +315,10 @@ class TravelPlannerApp:
         self.result = None
         self.route_actions = []
         self.route_positions = []
+        self.multi_paths = {}
+        self.joint_index = 0
+        self.explored_by_agent.clear()
+        self.expanded_by_agent.clear()
         self.explored.clear()
         self.expanded_states.clear()
         self.successor_states.clear()
@@ -244,10 +350,17 @@ class TravelPlannerApp:
         depth = self._depth_limit()
         if depth is None:
             return
+        horizon = self._planning_horizon() if self.multi_mode.get() else None
+        if self.multi_mode.get() and horizon is None:
+            return
         self._invalidate()
         self.pending_action = pending
-        solver = make_search(self.algorithm_choice.get(), depth_limit=depth)
-        self.search_iterator = solver.steps(self.env.transition_model(), self.env.agent_location)
+        if self.multi_mode.get():
+            solver = CooperativePlanner(self.algorithm_choice.get(), depth_limit=depth, horizon=horizon)
+            self.search_iterator = solver.steps(self.env)
+        else:
+            solver = make_search(self.algorithm_choice.get(), depth_limit=depth)
+            self.search_iterator = solver.steps(self.env.transition_model(), self.env.agent_location)
         self._set_status('Searching...', 'The shaded cells show examined states. Pause / Cancel keeps the window responsive.')
         self._set_controls()
         self.search_job = self.root.after(1, self._advance_search)
@@ -260,14 +373,19 @@ class TravelPlannerApp:
         # thousands of path nodes, so batch more of those while still giving
         # Tk control at least once per short (8 ms) work slice.
         try:
-            batch_size = 512 if self.algorithm_choice.get() == SearchAlgorithm.DLS.value else 12
+            batch_size = 512 if (self.multi_mode.get() or self.algorithm_choice.get() == SearchAlgorithm.DLS.value) else 12
             deadline = perf_counter() + 0.008
             for _ in range(batch_size):
                 event = next(self.search_iterator)
-                self.current_search = event.node.state
-                self.explored.add(event.node.state)
+                state = event.state if self.multi_mode.get() else event.node.state
+                self.current_search = state
+                self.explored.add(state)
                 if event.expanded:
-                    self.expanded_states.add(event.node.state)
+                    self.expanded_states.add(state)
+                if self.multi_mode.get():
+                    self.explored_by_agent.setdefault(event.agent_id, set()).add(state)
+                    if event.expanded:
+                        self.expanded_by_agent.setdefault(event.agent_id, set()).add(state)
                 self._update_metrics(event.metrics)
                 if perf_counter() >= deadline:
                     break
@@ -284,6 +402,9 @@ class TravelPlannerApp:
         self.search_job = self.root.after(12, self._advance_search)
 
     def _finish_search(self, result):
+        if self.multi_mode.get():
+            self._finish_multi_search(result)
+            return
         pending = self.pending_action
         self.pending_action = None
         self.result = result
@@ -324,7 +445,64 @@ class TravelPlannerApp:
         self.metric_vars['elapsed'].set(f'{metrics.elapsed_ms:.2f}')
         self.metric_vars['cpu'].set(f'{metrics.cpu_ms:.2f}')
 
+    def _finish_multi_search(self, result):
+        pending = self.pending_action
+        self.pending_action = None
+        self.result = result
+        self.current_search = None
+        self.multi_paths = {agent_id: list(path) for agent_id, path in result.paths.items()}
+        self.joint_index = 0
+        self._display_multi_metrics()
+        if result.found:
+            self._set_status('Team routes found', f'{len(self.env.agents)} agents / {result.makespan} joint ticks / '
+                             f'total cost {result.total_cost}. Matching colors identify agents and goals.', '#137568')
+        else:
+            self._set_status(result.status.value, result.message + ' No joint moves will execute. '
+                             'Try a different map, strategy, depth limit, or horizon.', '#a65c17')
+        self._set_controls()
+        self.draw()
+        if result.found and pending == 'step':
+            self._execute_one()
+        elif result.found and pending == 'auto':
+            self.running = True
+            self._set_controls()
+            self.move_job = self.root.after(80, self._auto_tick)
+
+    def _display_multi_metrics(self):
+        result = self.result
+        if result is None:
+            return
+        scope = self.metric_scope.get()
+        if scope == 'All agents':
+            self._update_metrics(result.metrics)
+            self.metric_vars['length'].set(str(result.makespan) if result.found else '-')
+            self.metric_vars['cost'].set(str(result.total_cost) if result.found else '-')
+        elif scope in result.results:
+            agent_result = result.results[scope]
+            self._update_metrics(agent_result.metrics)
+            length = len(agent_result.path) - 1 if agent_result.found else None
+            self.metric_vars['length'].set(str(length) if length is not None else '-')
+            self.metric_vars['cost'].set(str(length) if length is not None else '-')
+        else:
+            for variable in self.metric_vars.values():
+                variable.set('-')
+
+    def _has_pending_route(self):
+        if self.multi_mode.get():
+            return (self.result is not None and self.result.found and
+                    self.joint_index < self.result.makespan)
+        return bool(self.route_actions)
+
     def _can_move(self):
+        if self.multi_mode.get():
+            if self.env.all_reached:
+                self._set_status('All destinations reached', f'All {len(self.env.agents)} agents arrived in {self.env.steps} joint ticks.', '#137568')
+                return False
+            if self.result is not None and not self.result.found:
+                self._set_status(self.result.status.value, 'There is no complete coordinated plan. '
+                                 'Adjust the settings or map, then Find Route.', '#a65c17')
+                return False
+            return True
         if self.env.agent_location == self.env.goal:
             self._set_status('Destination reached', f'The traveler arrived in {self.env.steps} moves.', '#137568')
             return False
@@ -339,12 +517,14 @@ class TravelPlannerApp:
         self.pause(announce=False)
         if not self._can_move():
             return
-        if not self.route_actions:
+        if not self._has_pending_route():
             self._begin_search(pending='step')
         else:
             self._execute_one()
 
     def _execute_one(self):
+        if self.multi_mode.get():
+            return self._execute_joint()
         if not self.route_actions:
             self.running = False
             self._can_move()
@@ -374,12 +554,42 @@ class TravelPlannerApp:
     def auto_run(self):
         if self.search_iterator is not None or self.running or not self._can_move():
             return
-        if not self.route_actions:
+        if not self._has_pending_route():
             self._begin_search(pending='auto')
         else:
             self.running = True
             self._set_controls()
             self.move_job = self.root.after(1, self._auto_tick)
+
+    def _execute_joint(self):
+        if not self._has_pending_route():
+            self.running = False
+            self._can_move()
+            self._set_controls()
+            return False
+        next_index = self.joint_index + 1
+        positions = {agent_id: path[min(next_index, len(path) - 1)]
+                     for agent_id, path in self.multi_paths.items()}
+        self.successor_states.clear()
+        try:
+            self.env.execute_joint(positions)
+        except ValueError as error:
+            self._invalidate()
+            self._set_status('Team route changed', str(error) + ' Find a new coordinated route.', '#a65c17')
+            self.draw()
+            return False
+        self.joint_index = next_index
+        if self.env.all_reached:
+            self.running = False
+            self._set_status('All destinations reached', f'All {len(self.env.agents)} agents arrived in '
+                             f'{self.env.steps} joint ticks. No agents shared a cell or swapped an edge.', '#137568')
+        else:
+            self._set_status('Team traveling' if self.running else 'Joint step completed',
+                             f'Tick {self.env.steps}: {self.env.goals_found}/{len(self.env.agents)} destinations reached. '
+                             'An agent may wait while another passes.')
+        self._set_controls()
+        self.draw()
+        return not self.env.all_reached
 
     def _auto_tick(self):
         self.move_job = None
@@ -401,24 +611,39 @@ class TravelPlannerApp:
     def reset_agent(self):
         self._invalidate()
         self.env.reset()
-        self._set_status('Agent reset', 'The traveler is back at the start. The current map and search settings are preserved.')
+        self._set_status('Team reset' if self.multi_mode.get() else 'Agent reset',
+                         'All travelers are back at their starts. The map and search settings are preserved.')
         self.draw()
 
     def _replace_environment(self, env, seed=None):
         self._invalidate()
         self.env = env
         self.active_seed = seed
-        self.map_label.set(f'{"Original map" if seed is None else "Seed " + str(seed)} / {env.width} x {env.height}')
+        self.multi_mode.set(isinstance(env, MultiAgentEnvironment))
+        self.width_choice.set(str(env.width))
+        self.height_choice.set(str(env.height))
+        self.metric_scope.set('All agents')
+        if self.multi_mode.get():
+            self.scope_menu.configure(values=['All agents'] + [agent.agent_id for agent in env.agents])
+            self.scope_menu.grid()
+            self.agent_count_choice.set(str(len(env.agents)))
+            self.legend_text.set('A1 pairs with G1, A2 with G2, and so on. Colored lines = coordinated routes; agents may wait.')
+        else:
+            self.scope_menu.grid_remove()
+            self.legend_text.set('A = traveler   S = start   G = destination   Orange = current search node / inspected successor')
+        team = f' / {len(env.agents)} agents' if self.multi_mode.get() else ''
+        self.map_label.set(f'{"Original map" if seed is None else "Seed " + str(seed)} / {env.width} x {env.height}{team}')
         self._set_status('Map ready', 'Choose Find Route to search this map. Start, goal, and agent cells cannot be blocked.')
         self.draw()
 
     def original_map(self):
-        self._replace_environment(new_engine().environment)
+        self._replace_environment(new_multiagent_environment() if self.multi_mode.get()
+                                  else new_engine().environment)
 
     def new_seed_map(self):
         seed = random_seed()
-        self.seed_choice.set(str(seed))
-        self._replace_environment(generate_seeded_environment(seed), seed)
+        if self._generate_seed(seed):
+            self.seed_choice.set(str(seed))
 
     def load_seed(self):
         try:
@@ -426,16 +651,41 @@ class TravelPlannerApp:
         except ValueError:
             self._set_status('Check the seed', 'Enter a whole-number map seed.', '#a65c17')
             return
-        self._replace_environment(generate_seeded_environment(seed), seed)
+        self._generate_seed(seed)
+
+    def _generate_seed(self, seed):
+        parameters = self._seed_parameters()
+        if parameters is None:
+            return False
+        width, height, density, count = parameters
+        try:
+            env = (generate_multiagent_environment(seed, width=width, height=height,
+                    agent_count=count, obstacle_density=density) if self.multi_mode.get()
+                   else generate_seeded_environment(seed, width=width, height=height,
+                    obstacle_density=density))
+        except ValueError as error:
+            self._set_status('Check the map parameters', str(error), '#a65c17')
+            return False
+        self._replace_environment(env, seed)
+        return True
 
     def inspect_successors(self):
         self.pause(announce=False)
-        children = self.env.transition_model().expand(Node(self.env.agent_location))
+        if self.multi_mode.get():
+            agent_id = self.metric_scope.get()
+            agent = next((agent for agent in self.env.agents if agent.agent_id == agent_id), self.env.agents[0])
+            model = TransitionModel(self.env.width, self.env.height, agent.goal, frozenset(self.env.obstacles))
+            children = model.expand(Node(self.env.positions[agent.agent_id]))
+        else:
+            children = self.env.transition_model().expand(Node(self.env.agent_location))
         self.successor_states = {child.state for child in children}
         successors = ' | '.join(f'{child.action.name} -> ({child.state.x}, {child.state.y})'
                                 for child in children)
-        self._set_status('Successors inspected', (successors + '. Each child: depth 1, cost 1.') if successors
-                         else 'No applicable actions: the current state is terminal or trapped.')
+        note = (f'{agent.agent_id} spatial moves: {successors or "none"}. '
+                'Waiting and reservations are checked during coordinated planning.') if self.multi_mode.get() else (
+                (successors + '. Each child: depth 1, cost 1.') if successors else
+                'No applicable actions: the current state is terminal or trapped.')
+        self._set_status('Successors inspected', note)
         self.draw()
 
     def click(self, event):
@@ -443,7 +693,10 @@ class TravelPlannerApp:
             return
         left, top, size = self.grid_geometry
         loc = Location(int((event.x - left) // size), int((event.y - top) // size))
-        if not self.env.in_bounds(loc) or loc in (self.env.start, self.env.goal, self.env.agent_location):
+        protected = ({point for agent in self.env.agents for point in (agent.start, agent.goal)}
+                     | set(self.env.positions.values()) if self.multi_mode.get()
+                     else {self.env.start, self.env.goal, self.env.agent_location})
+        if not self.env.in_bounds(loc) or loc in protected:
             return
         self._invalidate()
         self.env.set_obstacle(loc, loc not in self.env.obstacles)
@@ -462,6 +715,9 @@ class TravelPlannerApp:
         size = max(1.0, min((width - 24) / env.width, (height - 24) / env.height))
         left, top = (width - env.width * size) / 2, (height - env.height * size) / 2
         self.grid_geometry = (left, top, size)
+        if self.multi_mode.get():
+            self._draw_multi(left, top, size)
+            return
         route = set(self.route_positions)
         for y in range(env.height):
             for x in range(env.width):
@@ -496,6 +752,58 @@ class TravelPlannerApp:
                     canvas.create_text(px + size / 2, py + size / 2, text='A', fill='white',
                                        font=(self.font_family, max(9, int(size * .25)), 'bold'))
         self.movement.set(f'{env.steps} moves taken  /  {len(self.route_actions)} planned moves remaining')
+
+    def _draw_multi(self, left, top, size):
+        canvas, env, colors = self.canvas, self.env, self.CELL_COLORS
+        scope = self.metric_scope.get()
+        explored = self.explored if scope == 'All agents' else self.explored_by_agent.get(scope, set())
+        expanded = self.expanded_states if scope == 'All agents' else self.expanded_by_agent.get(scope, set())
+        for y in range(env.height):
+            for x in range(env.width):
+                loc = Location(x, y)
+                fill = colors['expanded'] if loc in expanded else colors['examined'] if loc in explored else colors['open']
+                if loc in self.successor_states:
+                    fill = colors['successor']
+                if loc == self.current_search:
+                    fill = colors['current']
+                if loc in env.obstacles:
+                    fill = colors['obstacle']
+                px, py = left + x * size, top + y * size
+                canvas.create_rectangle(px, py, px + size, py + size, fill=fill, outline='#d5e0e6')
+        for index, agent in enumerate(env.agents):
+            color = self.AGENT_COLORS[index % len(self.AGENT_COLORS)]
+            path = self.multi_paths.get(agent.agent_id, [])
+            remaining = path[min(self.joint_index, max(0, len(path) - 1)):]
+            offset = ((index % 3) - 1) * size * .07
+            if len(remaining) > 1:
+                coordinates = [coordinate for point in remaining for coordinate in
+                               (left + (point.x + .5) * size + offset, top + (point.y + .5) * size + offset)]
+                canvas.create_line(*coordinates, fill=color, width=4 if scope == agent.agent_id else 2,
+                                   capstyle='round', joinstyle='round', tags=('team_route', agent.agent_id))
+            gx, gy = left + agent.goal.x * size, top + agent.goal.y * size
+            pad = max(2, size * .08)
+            canvas.create_rectangle(gx + pad, gy + pad, gx + size - pad, gy + size - pad,
+                                    fill='white', outline=color, width=3, tags=('team_goal', agent.agent_id))
+            if size >= 18:
+                canvas.create_text(gx + size / 2, gy + size / 2, text=f'G{index + 1}', fill=color,
+                    font=(self.font_family, max(7, int(size * .23)), 'bold'), tags=('team_goal_label', agent.agent_id))
+            if agent.start not in env.positions.values() and agent.start != agent.goal:
+                sx, sy = left + (agent.start.x + .5) * size, top + (agent.start.y + .5) * size
+                if size >= 18:
+                    canvas.create_text(sx, sy, text=f'S{index + 1}', fill=color,
+                                       font=(self.font_family, max(7, int(size * .2))))
+        for index, agent in enumerate(env.agents):
+            color = self.AGENT_COLORS[index % len(self.AGENT_COLORS)]
+            position = env.positions[agent.agent_id]
+            px, py = left + position.x * size, top + position.y * size
+            pad = size * .15
+            canvas.create_oval(px + pad, py + pad, px + size - pad, py + size - pad,
+                               fill=color, outline='white', width=2, tags=('team_agent', agent.agent_id))
+            if size >= 18:
+                canvas.create_text(px + size / 2, py + size / 2, text=agent.agent_id, fill='white',
+                    font=(self.font_family, max(7, int(size * .21)), 'bold'), tags=('team_agent_label', agent.agent_id))
+        remaining_ticks = max(0, self.result.makespan - self.joint_index) if self.result and self.result.found else 0
+        self.movement.set(f'Joint ticks: {env.steps}  /  Goals: {env.goals_found}/{len(env.agents)}  /  Remaining ticks: {remaining_ticks}')
 
     def close(self):
         self._cancel_jobs()
